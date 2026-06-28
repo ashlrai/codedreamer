@@ -103,17 +103,22 @@ vs a pure-net executor, which is **0.00** at OOD magnitude (it can't survive ste
 
 ✅ Proven here:
 - The magnitude wall is the digit head: OOD exact-match **0.00 → 0.79** by offloading arithmetic, same weights.
-- Control flow is magnitude-invariant (next-pc / branch accuracy ~0.99 across a 10–25× shift).
+- Control flow is invariant to large **outputs**: with multiplication (huge products, modest inputs) next-pc holds **0.999 → 0.998** while the learned digit readout collapses **0.70 → 0.06** — only the offloadable part fails (`FINDINGS_FRONTIER.md` §1). Large **inputs** are the limit: they degrade the *encoder* and nick control (an honest correction to the blanket "control is magnitude-invariant" claim — `FINDINGS_FRONTIER.md` §3).
 - The neurosymbolic executor runs whole programs far OOD (0.39 full-success vs 0.00 pure-net).
 - On a *learnable* arithmetic slice, the grounded latent beats a matched token-space baseline on whole-state exact-match and on causal counterfactuals; probes + causal edits work.
 
 🔬 Open (the frontier — and the contributor challenge):
-- `EM (offloaded)` is **0.79, not 1.0**. The gap is *value-derived predicates* — comparison
-  outcomes (0.79 → 0.63) and signs (0.88 → 0.80) that depend on *relative* magnitude. The
-  net tracks them only approximately OOD, and over a long rollout those branch errors
-  compound. **The open problem: represent comparison-relevant value properties (sign,
-  ordering) in a magnitude-invariant way** — i.e. learn an *abstract interpreter*. If you
-  want to push the frontier, this is the place. See [`FINDINGS_NEUROSYM.md`](FINDINGS_NEUROSYM.md) §"the honest residual."
+- `EM (offloaded)` is **0.79, not 1.0**, and four follow-up experiments
+  ([`FINDINGS_FRONTIER.md`](FINDINGS_FRONTIER.md)) localize exactly why. The root cause is
+  the **encoder's representation of large *input* operands**: a frozen linear probe shows
+  *sign* is a perfectly magnitude-invariant latent direction (1.00 → 1.00) but *order*
+  degrades (0.95 → 0.82), and the executor's OOD failures are ~half wrong-pc errors on
+  plain arithmetic steps driven by that degraded encoding. **The challenge: a
+  magnitude-invariant operand encoding** (e.g. an architectural MSB-first comparator) — and
+  a stronger comparison head, which the probe shows leaves recoverable order signal on the
+  table. Magnitude-invariant comparison *cannot be learned from small-magnitude data alone*
+  (no signal about large-value order); it needs a prior or a symbolic comparator. If you
+  want to push the frontier, this is the place.
 - Monolithic multi-digit arithmetic at scale remains unsolved at laptop budget (a clean
   negative for the curriculum approach — `FINDINGS_M3.md` §5). The point of this repo is
   that you may not need to solve it.
@@ -139,7 +144,10 @@ execwm/
   train/         train_m1.py · train_edit.py · curriculum.py
   plan/          goal_tasks.py · planner.py · divergence_planner.py   (edit-as-action planning)
 demo/            app.py (the magnitude-slider demo) · requirements.txt
-scripts/         neurosym_spike.py · neurosym_exec_eval.py · run_execwm_bench.py · …
+scripts/         neurosym_spike.py · neurosym_exec_eval.py · neurosym_mul.py ·
+                 analysis_order_probe.py · analysis_divergence_cause.py · analysis_ood_axes.py
+docs/            ARCHITECTURE.md · finding_*.md (the three frontier analyses)
+FINDINGS_*.md    NEUROSYM (the headline) · FRONTIER (what's learnable, the synthesis) · M1–M3 (history)
 artifacts/       neurosym_model.pt  (the trained checkpoint the demo loads)
 ```
 

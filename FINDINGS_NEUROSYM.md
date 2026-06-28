@@ -46,6 +46,12 @@ n ≈ 10.2k transitions per split.
    **0.773 → 0.254** (arithmetic-op digits 0.672 → 0.103). This is exactly — and only —
    the part a symbolic ALU computes for free given the operands.
 
+> **Update:** four follow-up experiments refine and partly correct this section — see
+> [`FINDINGS_FRONTIER.md`](FINDINGS_FRONTIER.md). Headlines: the root cause is the
+> encoder's representation of large *input* operands (sign is perfectly invariant, order
+> is not); control is invariant to large *outputs* but not large *inputs* (so "control is
+> magnitude-invariant" is corrected); and the result holds *harder* for multiplication.
+
 4. **The honest residual (the frontier).** `EM digits-oracle` is 0.790, not ~1.0.
    The gap from 1.0 is *not* digits — it is **value-derived predicates**: comparison
    outcomes (0.788 → 0.626) and sign (0.881 → 0.798) degrade because they depend on

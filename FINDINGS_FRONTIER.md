@@ -1,0 +1,111 @@
+# The frontier: what is, and isn't, learnable in execution
+
+`FINDINGS_NEUROSYM.md` established the headline — offload arithmetic and the magnitude
+wall vanishes (OOD exact-match 0.00 → 0.79), because control flow is (mostly)
+magnitude-invariant. This document pins down the *honest* boundary of that claim with
+four follow-up experiments (three interpretability/diagnostic analyses on the shipped
+checkpoint, one new training run). The picture that emerges is sharper than v1 and, in
+one place, corrects it.
+
+## The one-paragraph synthesis
+
+The symbolic ALU offload is **flawless** — across thousands of OOD transitions it never
+causes a single state divergence. What degrades out of distribution splits cleanly by
+*where the magnitude lives*: **large output magnitude** (a computed result is huge) hurts
+**only the digit decode**, which is exactly the offloadable part — so control stays
+essentially perfect; **large input magnitude** (operands fed into a step are huge)
+degrades the **encoder's** representation, which then nicks control itself. Sign is a
+perfectly magnitude-invariant linear direction in the latent; *order/magnitude* is not.
+So the frontier is precise: **make the encoder's representation of large operands
+magnitude-robust** (and/or offload comparison the way we offload arithmetic). Magnitude-
+invariant *comparison* cannot be fully learned from small-magnitude data — that
+distribution carries no signal about how values in the hundreds order — so it needs an
+architectural prior or a symbolic comparator, not more of the same data.
+
+## 1. Multiplication: the cleanest cut (new training run)
+
+`scripts/neurosym_mul.py` — one model trained on small ADD/SUB/**MUL** programs
+(inputs ≤4, products ≤16), wide codec, read out in-distribution vs magnitude-OOD
+(inputs ≤40, products ≤1600 — large *outputs*, modest *inputs*):
+
+| split | EM learned | EM digits-oracle | pc acc | written digits | arith digits | cmp result |
+|---|---|---|---|---|---|---|
+| in-distribution | 0.695 | 0.928 | 0.999 | 0.690 | 0.528 | 0.774 |
+| **magnitude-OOD** | **0.056** | **0.892** | **0.998** | 0.363 | 0.165 | 0.706 |
+
+This is the sharpest demonstration of the thesis. With multiplication in the mix the
+learned readout collapses *harder* (EM 0.70 → **0.056**; multiplication digits are even
+further out of distribution), yet **control flow is essentially untouched (pc 0.999 →
+0.998)** and offloading arithmetic recovers almost everything (**0.928 → 0.892**). The
+reason control is *more* invariant here than in the ADD/SUB magnitude run (where inputs
+reached ~400 and pc fell to 0.986) is the key insight of §3: here the large numbers are
+*outputs*, not *inputs*.
+
+## 2. Order-relation probe: sign is free, order is not (`scripts/analysis_order_probe.py`)
+
+Frozen linear probes on the latent, fit on in-distribution states only, scored on
+held-out in-dist and magnitude-OOD (`docs/finding_order_probe.md`):
+
+| probe | in-dist | OOD | chance |
+|---|---|---|---|
+| sign (value < 0) | 1.000 | 1.000 | ~0.74 |
+| order (value_i < value_j) | 0.949 | 0.818 | ~0.56 |
+
+**Sign is a perfectly magnitude-invariant linear direction** — so the end-task sign
+degradation is a *readout* failure, not a missing representation. **Order degrades (0.95
+→ 0.82) but does not collapse**, and it stays above the model's own comparison readout
+(0.63) — so the latent carries more usable order structure than the trained comparison
+head exploits. Two levers fall out: a stronger comparison head (recover the slack), and
+a magnitude-robust encoding (raise the ceiling).
+
+## 3. Divergence cause: input-magnitude corrupts control (`scripts/analysis_divergence_cause.py`)
+
+Running the multi-step executor on 300 OOD programs and classifying the *first* step
+each one breaks (`docs/finding_divergence_cause.md`):
+
+- **100% of divergences are wrong-next-pc (control) errors; 0% are value errors.** The
+  ALU offload never breaks a single program.
+- **In-distribution**, ~100% of failures are at comparison/branch ops (value-dependent
+  control) — as expected.
+- **Out of distribution, only 50.6% are comparison/branch — 47.2% are wrong-pc errors on
+  plain ADD/SUB steps**, a mode that barely exists in-distribution. Large *input*
+  operands corrupt the encoding enough that the pc head mispredicts even the trivial
+  `pc+1` advance.
+
+This **corrects** the v1 claim that "control is magnitude-invariant." It is invariant to
+large *outputs* (§1, pc 0.998) but not fully to large *inputs* (the encoder is the weak
+link). The single-step pc=0.986 OOD number hid this: that 1.4% residual concentrates on
+high-input-magnitude steps and compounds over a rollout.
+
+## 4. Other OOD axes: "only arithmetic fails" is magnitude-specific (`scripts/analysis_ood_axes.py`)
+
+Holding magnitude small and pushing nesting depth and trace length OOD instead
+(`docs/finding_ood_axes.md`):
+
+| split | em_learned | em_digits_oracle | pc | cmp_result |
+|---|---|---|---|---|
+| in-distribution | 0.690 | 0.900 | 0.986 | 0.681 |
+| depth-OOD (nesting 3–4) | 0.643 | 0.827 | 0.901 | 0.704 |
+| length-OOD (trace 105–256) | 0.619 | 0.830 | 0.919 | 0.793 |
+
+The structure-vs-digits decomposition holds *directionally* (em_digits_oracle stays high,
+~0.83), but the failure mode is different: with magnitude small the digit head doesn't
+collapse, so the modest damage lands on **control** (pc 0.99 → ~0.91), not digits. So
+"only the arithmetic payload fails" is a statement about the *magnitude* axis
+specifically. (Honest confounds: the model was never specialized for these axes, and the
+length split leaks some magnitude — read as suggestive, not definitive.)
+
+## The v2 target (the contributor challenge, now precise)
+
+1. **Magnitude-invariant operand encoding.** The encoder's representation of large
+   *inputs* is the single root cause behind both the order-probe degradation (§2) and the
+   arithmetic-step control errors (§3). A value encoding whose order/comparison structure
+   is robust beyond the trained magnitude range — by architectural prior (e.g. an explicit
+   MSB-first digit comparator), not by data — is the highest-leverage fix.
+2. **A stronger comparison readout**, which the probe (§2) shows is leaving recoverable
+   order signal on the table.
+3. **Or offload comparison** the way arithmetic is offloaded — clean, but it moves more
+   work to the symbolic side (and toward "you are running the VM").
+
+Every number here is graded against the VM oracle; the v1 correction in §3 is reported as
+such.
