@@ -1,0 +1,5 @@
+# CodeDreamer interactive demo. Install in a fresh venv to avoid clobbering other
+# packages:  python -m venv .venv && . .venv/bin/activate && pip install -r demo/requirements.txt
+torch>=2.2
+numpy
+gradio>=4.0

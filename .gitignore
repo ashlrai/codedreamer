@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Large legacy checkpoints — NOT needed for the demo. The demo ships
+# artifacts/neurosym_model.pt (force-added below) so it works out of the box.
+artifacts/*.pt
+!artifacts/neurosym_model.pt
+
+# Run logs / intermediate outputs
+artifacts/*.log
+artifacts/*.json
+
+# OS
+.DS_Store
