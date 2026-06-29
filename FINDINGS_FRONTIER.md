@@ -140,5 +140,35 @@ that fall outside the codec range — they score as non-matches instead of raisi
 3. **Or offload comparison** the way arithmetic is offloaded — clean, but it moves more
    work to the symbolic side (and toward "you are running the VM").
 
-Every number here is graded against the VM oracle; the v1 correction in §3 is reported as
-such.
+## 7. v2 attempt: a fixed positional encoding does NOT close the gap (clean negative)
+
+We tested the simplest form of target #1 directly. Hypothesis: with *learned* per-position
+digit embeddings, the high-order positions are always zero in small-magnitude training and
+so are undertrained — making the encoding of large values OOD. Swap them for a **fixed
+sinusoidal position encoding** (never OOD) and the encoding of a large value becomes a
+clean composition of (well-trained digit) + (fixed position). `scripts/neurosym_v2_encoding.py`
+trains a `fixed_pos=True` model on the *same* small-magnitude slice:
+
+| OOD metric | baseline (learned pos) | v2 (fixed pos) | Δ |
+|---|---|---|---|
+| em_digits_oracle | 0.790 | 0.742 | **−0.048** |
+| cmp_result | 0.626 | 0.576 | **−0.050** |
+| written_sign | 0.798 | 0.790 | −0.008 |
+| pc | 0.986 | 0.993 | +0.007 |
+
+**It does not help — it slightly hurts.** This is an important negative: the gap is *not*
+primarily an undertrained-position-embedding artifact. The deeper cause stands — the
+*dynamics* never observes a nonzero high-order digit during small-magnitude training, so it
+never learns what large-magnitude values *mean* for comparison. Fixing the static encoding
+of positions cannot supply that missing training signal. **Magnitude-invariant comparison
+is not learnable from small-magnitude data by re-encoding alone.**
+
+So the live options narrow to: a **structural** comparator (compute order MSB-first as a
+fixed differentiable circuit — magnitude-invariant *by construction*, not learned), a
+stronger comparison **readout** (target #2 — recovers the slack the probe in §2 shows, but
+cannot raise the ceiling), or **offloading comparison** to the VM the way arithmetic is
+offloaded (target #3 — clean, moves work to the symbolic side). Target #1 in its *learned*
+form is now ruled out.
+
+Every number here is graded against the VM oracle; the v1 correction in §3 and this v2
+negative are reported as such.

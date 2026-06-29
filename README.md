@@ -118,9 +118,11 @@ branches) lifts OOD full-program success further to **0.55** — see `FINDINGS_F
   plain arithmetic steps driven by that degraded encoding. **The challenge: a
   magnitude-invariant operand encoding** (e.g. an architectural MSB-first comparator) — and
   a stronger comparison head, which the probe shows leaves recoverable order signal on the
-  table. Magnitude-invariant comparison *cannot be learned from small-magnitude data alone*
-  (no signal about large-value order); it needs a prior or a symbolic comparator. If you
-  want to push the frontier, this is the place.
+  table.   Magnitude-invariant comparison *cannot be learned from small-magnitude data alone*
+  (no signal about large-value order); it needs a prior or a symbolic comparator. We tested
+  the simplest *learned* fix — a fixed positional digit encoding — and it does **not** help
+  (`FINDINGS_FRONTIER.md` §7), which rules out the learned-re-encoding route and points to a
+  structural comparator or offloading. If you want to push the frontier, this is the place.
 - Monolithic multi-digit arithmetic at scale remains unsolved at laptop budget (a clean
   negative for the curriculum approach — `FINDINGS_M3.md` §5). The point of this repo is
   that you may not need to solve it.
