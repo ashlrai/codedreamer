@@ -202,3 +202,57 @@ learn `<`/`=`/`>`, but it learns it from low-magnitude digits and generalizes).
 measure the end-to-end lift on OOD `cmp_result`, branch accuracy, and executor full-program
 success. The mechanism is now proven; the integration is a well-scoped contributor task
 (`docs/FRONTIER_CHALLENGE.md`).
+
+## 9. A stronger readout does NOT recover the gap (`scripts/analysis_cmp_readout.py`)
+
+Target #2 was "a stronger comparison readout recovers the slack the order-probe hinted at."
+We tested it directly: train linear vs 2-layer-MLP readouts on the frozen predicted-next
+latent of comparison-op transitions (`docs/finding_cmp_readout.md`):
+
+| OOD readout | accuracy |
+|---|---|
+| model's own comparison bit | 0.713 |
+| linear probe | 0.709 |
+| 2-layer MLP probe | 0.684 |
+| majority baseline | 0.680 |
+
+**Capacity buys nothing OOD** — linear ≈ MLP ≈ the majority baseline, and the linear-vs-MLP
+OOD ordering even flips sign across seeds (the textbook signature of a latent ceiling). So
+the residual is *representational/computational*, not a weak head: at OOD magnitude the
+dynamics simply does not compute the comparison, and no readout can recover information that
+isn't there. Instructive contrast with §2: the *operand* register latents encode order
+strongly (0.82 OOD), but the comparison *result* written into the dst slot is near-chance
+OOD — the information is lost in the dynamics' write. Target #2 is a dead end for OOD; the
+lever is the §8 architectural prior (or offloading the comparison to read the well-recovered
+operand order).
+
+## 10. The decomposition is complete (`scripts/offload_ladder.py`)
+
+An offload ladder on the executor — each rung hands one more piece to the symbolic
+substrate (`docs/finding_offload_ladder.md`), magnitude-OOD full-program success:
+
+| rung | what the net still does | OOD success |
+|---|---|---|
+| 1 baseline | predicts every next pc | 0.400 |
+| 2 + structural pc-advance | decides only JZ/JNZ branches | 0.550 |
+| 3 + structural branch (operand vs 0) | nothing (VM-equivalent) | **1.000** |
+
+The OOD gap attributes **entirely** onto offloadable pieces. Rung 3 is the interpreter by
+construction, so its 1.0 isn't a model result — it's the honest endpoint: **given value
+access, step-by-step execution has ~zero irreducible *learnable* content** (arithmetic →
+ALU, comparison → the §8 prior or ALU, control → the ISA).
+
+## Bottom line — where the learnable value actually is
+
+Two things are now settled. (a) The magnitude wall was the digit head; offload arithmetic
+and structure generalizes (the headline). (b) The *last* learnable-vs-offloadable piece,
+comparison, is solvable two ways — a magnitude-invariant architectural prior (§8, works) or
+offloading (§10, trivially) — and a bigger readout is *not* a third way (§9).
+
+The deeper consequence reframes the whole project. If, given the values, every step is
+determined by the ALU + the ISA + a comparator, then a *latent world model earns its keep
+only where you do not have or do not want to spend those values*: planning/search over many
+candidate **edits**, **partial / uninstantiated programs**, and learned **abstraction** that
+collapses work the interpreter would do step-by-step. That is exactly risk R4 from the
+original plan, now reached empirically rather than assumed — and it is the right place to
+point the next phase (the edit-conditioned planner in `execwm/plan/`).
