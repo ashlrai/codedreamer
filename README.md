@@ -79,6 +79,8 @@ step, including resolving branches) while the ALU computes values:
 | **magnitude-OOD** | **0.39** | **0.612** | 27.5 steps |
 
 vs a pure-net executor, which is **0.00** at OOD magnitude (it can't survive step one).
+Handing the deterministic `pc+1` advance back to the ISA (so the net only decides
+branches) lifts OOD full-program success further to **0.55** — see `FINDINGS_FRONTIER.md` §5.
 `PYTHONPATH=. python scripts/neurosym_exec_eval.py`
 
 ---

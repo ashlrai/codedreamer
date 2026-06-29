@@ -49,6 +49,8 @@ class ModelConfig:
     dyn_layers: int = 3
     ffn_mult: int = 4
     dropout: float = 0.0
+    fixed_pos: bool = False   # use a fixed sinusoidal digit-position encoding (v2 prior:
+                              # high digit positions are never undertrained -> magnitude-OOD)
 
     @property
     def num_slots(self) -> int:
@@ -67,20 +69,43 @@ class ModelConfig:
 # ---------------------------------------------------------------------------
 
 
+def _sinusoid_table(n: int, d: int) -> torch.Tensor:
+    """Standard fixed sinusoidal position table of shape (n, d)."""
+    pos = torch.arange(n, dtype=torch.float32).unsqueeze(1)
+    i = torch.arange(d, dtype=torch.float32).unsqueeze(0)
+    angle = pos / torch.pow(10000.0, (2 * (i // 2)) / d)
+    tab = torch.zeros(n, d)
+    tab[:, 0::2] = torch.sin(angle[:, 0::2])
+    tab[:, 1::2] = torch.cos(angle[:, 1::2])
+    return tab
+
+
 class ValueEmbedding(nn.Module):
     """Embed a signed integer given as (sign, MSB-first digits) compositionally:
     a shared per-digit-value table plus a per-position table summed over digits,
-    plus a sign embedding. Compositional digits help the magnitude OOD axis."""
+    plus a sign embedding. Compositional digits help the magnitude OOD axis.
 
-    def __init__(self, base: int, max_digits: int, d: int) -> None:
+    ``fixed_pos`` (v2 prior) swaps the *learned* per-position table for a fixed
+    sinusoidal one. With learned positions, digit positions that are always zero in
+    small-magnitude training (the high-order ones) are undertrained, so the encoding
+    of large out-of-distribution values is itself OOD — the root cause identified in
+    FINDINGS_FRONTIER. A fixed position signal is never OOD, so the encoding of a
+    large value stays a clean composition of (well-trained digit) + (fixed position)."""
+
+    def __init__(self, base: int, max_digits: int, d: int, fixed_pos: bool = False) -> None:
         super().__init__()
         self.digit = nn.Embedding(base, d)
-        self.pos = nn.Embedding(max_digits, d)
         self.sign = nn.Embedding(2, d)
+        self.fixed_pos = fixed_pos
+        if fixed_pos:
+            self.register_buffer("pos_table", _sinusoid_table(max_digits, d), persistent=False)
+        else:
+            self.pos = nn.Embedding(max_digits, d)
         self.register_buffer("pos_idx", torch.arange(max_digits), persistent=False)
 
     def forward(self, sign: torch.Tensor, digits: torch.Tensor) -> torch.Tensor:
-        d_emb = self.digit(digits) + self.pos(self.pos_idx)  # (..., D, d)
+        pos = self.pos_table if self.fixed_pos else self.pos(self.pos_idx)
+        d_emb = self.digit(digits) + pos                     # (..., D, d)
         return d_emb.sum(dim=-2) + self.sign(sign)           # (..., d)
 
 
@@ -99,7 +124,7 @@ class StateEncoder(nn.Module):
         super().__init__()
         d = cfg.d_model
         self.cfg = cfg
-        self.value = ValueEmbedding(cfg.base, cfg.max_digits, d)
+        self.value = ValueEmbedding(cfg.base, cfg.max_digits, d, fixed_pos=cfg.fixed_pos)
         self.reg_pos = nn.Embedding(cfg.num_regs, d)
         self.reg_type = nn.Embedding(len(VType), d)
         self.heap_pos = nn.Embedding(cfg.num_cells, d)
@@ -138,7 +163,7 @@ class ActionEncoder(nn.Module):
         self.dst = nn.Embedding(cfg.num_regs + 1, d)          # +1 none sentinel
         self.kind = nn.Embedding(3, d)
         self.reg = nn.Embedding(cfg.num_regs + 1, d)
-        self.value = ValueEmbedding(cfg.base, cfg.max_digits, d)
+        self.value = ValueEmbedding(cfg.base, cfg.max_digits, d, fixed_pos=cfg.fixed_pos)
         self.list_id = nn.Embedding(cfg.num_lists + 1, d)
         self.target = nn.Embedding(cfg.max_pc + 1, d)
         self.mlp = nn.Sequential(nn.Linear(d, d * cfg.ffn_mult), nn.GELU(),

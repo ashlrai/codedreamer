@@ -30,6 +30,16 @@ def _batch1(enc_dict: dict, device) -> dict:
     return {k: torch.as_tensor(v)[None].to(device) for k, v in enc_dict.items()}
 
 
+def _exact(scodec, state, enc_true) -> bool:
+    """exact-match vs an already-encoded ground truth, robust to states whose value
+    is out of the codec's range (can happen after control diverges OOD) — such a state
+    cannot equal an in-range ground truth, so it scores False instead of crashing."""
+    try:
+        return bool(scodec.exact_match(scodec.encode(state), enc_true))
+    except Exception:  # noqa: BLE001 - EncodeError: out-of-range value -> not a match
+        return False
+
+
 @dataclass
 class StepRecord:
     t: int
@@ -87,7 +97,7 @@ def neurosym_execute(model, scodec, acodec, ex, device, *, max_steps: int | None
         true_pc = int(true_next.pc) if true_next is not None else -1
         control_ok = (pred_pc == true_pc)
         state_exact = (true_next is not None
-                       and scodec.exact_match(scodec.encode(ns), scodec.encode(true_next)))
+                       and _exact(scodec, ns, scodec.encode(true_next)))
         if not state_exact:
             diverged = True
         records.append(StepRecord(
@@ -210,8 +220,8 @@ def demo_trace(model, scodec, acodec, ex, device) -> dict:
         neuro.error = bool(logits["error"].argmax(-1).item())
 
         enc_true = scodec.encode(true_next)
-        pure_exact = scodec.exact_match(scodec.encode(pure), enc_true)
-        neuro_exact = scodec.exact_match(scodec.encode(neuro), enc_true)
+        pure_exact = _exact(scodec, pure, enc_true)
+        neuro_exact = _exact(scodec, neuro, enc_true)
         pure_ok += int(pure_exact)
         neuro_ok += int(neuro_exact)
         steps.append({

@@ -95,6 +95,39 @@ collapse, so the modest damage lands on **control** (pc 0.99 → ~0.91), not dig
 specifically. (Honest confounds: the model was never specialized for these axes, and the
 length split leaks some magnitude — read as suggestive, not definitive.)
 
+## 5. A free fix: hand pc-advance back to the ISA (`scripts/structural_pc_executor.py`)
+
+§3 found that ~half the executor's OOD failures were wrong-pc errors on *non-branch*
+instructions — but for any non-jump op the next pc is deterministically `pc+1` (the ISA),
+not something to predict. So a "structural-pc" executor advances pc structurally for
+non-control ops (and to the instruction's target for `JMP`), and reduces the net to the
+*one* value-dependent control decision: taken/not-taken on `JZ`/`JNZ`. Values still come
+from the ALU (`docs/finding_structural_pc.md`):
+
+| executor | OOD full-program success | OOD per-step exact |
+|---|---|---|
+| net predicts every pc (current) | 0.400 | 0.641 |
+| **structural pc-advance + net decides only branches** | **0.550** | **0.798** |
+
+That recovers ~72% of the OOD per-step degradation **for free** — it was misattributed
+control error on steps whose pc was never in question. The residual is genuine and lands
+exactly on the frontier: OOD branch-decision accuracy is 0.86 (vs 0.91 in-dist), and
+snapping the net's pc to {pc+1, target} barely helps (+0.02), because when the net gets
+taken/not-taken wrong it's failing to compare a value in the hundreds to zero — the §2
+order wall, not structure.
+
+## 6. Measuring progress (`scripts/frontier_benchmark.py`, `docs/FRONTIER_CHALLENGE.md`)
+
+One command scores any checkpoint on the canonical frontier metrics (in-dist vs
+magnitude-OOD) and prints the three "numbers to beat": OOD `em_digits_oracle` ≈ 0.79,
+OOD `cmp_result` ≈ 0.63, OOD executor `full_trajectory_success` ≈ 0.40 (now 0.55 with the
+structural-pc executor). The rule: improve these *without* training on large magnitude
+(that would be cheating — the model must learn from small-magnitude data and generalize).
+
+(Engineering note: the executor's grading is now robust to post-divergence ALU values
+that fall outside the codec range — they score as non-matches instead of raising
+`EncodeError`, `execwm/eval/neurosym_exec.py:_exact`.)
+
 ## The v2 target (the contributor challenge, now precise)
 
 1. **Magnitude-invariant operand encoding.** The encoder's representation of large
