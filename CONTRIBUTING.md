@@ -14,10 +14,10 @@ The Python import package is `execwm`; the public brand is **CodeDreamer**.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r demo/requirements.txt        # torch, numpy, gradio — enough to run + test
-python -m pytest -q                          # 109 tests
+python -m pytest -q                          # 111 tests
 ```
 
-The suite (109 tests) covers the VM + tracer, the lossless state/action codecs, the
+The suite (111 tests) covers the VM + tracer, the lossless state/action codecs, the
 disjoint OOD splits, the model and grounding heads, the neurosymbolic readout, the
 executor, and the planner. **A green suite is the contract.** Run it before and after
 any change; if you add behavior, add a test that grades it against the VM oracle (see

@@ -172,3 +172,33 @@ form is now ruled out.
 
 Every number here is graded against the VM oracle; the v1 correction in §3 and this v2
 negative are reported as such.
+
+## 8. The prior that works: an MSB-first comparator is magnitude-invariant (POSITIVE)
+
+§7 ruled out re-encoding; the remaining shot was a *structural* comparator. We built one
+(`execwm/model/comparator.py`) and tested it in isolation (`scripts/comparator_probe.py`):
+predict order(a, b) ∈ {<, =, >} from (sign, MSB-first digits), trained ONLY on |value| ≤ 30,
+tested on |value| ∈ [300, 800] — same codec width.
+
+| comparator | in-dist acc | OOD acc |
+|---|---|---|
+| **`DigitComparator` (MSB-first prior)** | 1.000 | **1.000** |
+| `PlainComparator` (MLP, no prior) | 0.995 | 0.748 |
+
+**The frontier is closable with a learned model.** A small *learned* per-position cell
+(scores `<`/`=`/`>` for one digit pair) plus a *fixed* lexicographic combiner (the most-
+significant non-equal position decides) is **perfectly magnitude-invariant** — 1.00 → 1.00
+across an 10–25× shift — while a plain MLP collapses to 0.748 (right where the world model's
+own order/comparison sits, §2). The invariance is not memorized: it comes from
+**weight-sharing across digit positions** (the cell is trained on the always-populated
+low-order positions and transfers verbatim to the high-order positions that only light up
+out of distribution) plus the fixed reduction. This is exactly the "architectural prior, not
+data" that §2/§7 pointed to — and it is *learned*, not offloaded (the cell could fail to
+learn `<`/`=`/`>`, but it learns it from low-magnitude digits and generalizes).
+
+**Honest scope.** This solves the comparison *sub-problem* in isolation. The clear next step
+(deliberately not rushed — it is a multi-call-site change to the model's forward) is to wire
+`DigitComparator` into the world model's dynamics for comparison/branch instructions and
+measure the end-to-end lift on OOD `cmp_result`, branch accuracy, and executor full-program
+success. The mechanism is now proven; the integration is a well-scoped contributor task
+(`docs/FRONTIER_CHALLENGE.md`).

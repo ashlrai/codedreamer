@@ -121,8 +121,13 @@ branches) lifts OOD full-program success further to **0.55** — see `FINDINGS_F
   table.   Magnitude-invariant comparison *cannot be learned from small-magnitude data alone*
   (no signal about large-value order); it needs a prior or a symbolic comparator. We tested
   the simplest *learned* fix — a fixed positional digit encoding — and it does **not** help
-  (`FINDINGS_FRONTIER.md` §7), which rules out the learned-re-encoding route and points to a
-  structural comparator or offloading. If you want to push the frontier, this is the place.
+  (`FINDINGS_FRONTIER.md` §7), ruling out the learned-re-encoding route. But a **structural
+  MSB-first comparator does work**: a learned position-shared digit cell + a fixed
+  lexicographic combiner is **perfectly magnitude-invariant** (order accuracy **1.00 → 1.00**
+  across a 10–25× shift, vs a plain MLP's 0.75) — `FINDINGS_FRONTIER.md` §8,
+  `execwm/model/comparator.py`. So the frontier *is* closable with a learned model; the open
+  contributor task is wiring that comparator into the world-model dynamics and measuring the
+  end-to-end lift. If you want to push the frontier, this is the place.
 - Monolithic multi-digit arithmetic at scale remains unsolved at laptop budget (a clean
   negative for the curriculum approach — `FINDINGS_M3.md` §5). The point of this repo is
   that you may not need to solve it.
@@ -136,7 +141,7 @@ branches) lifts OOD full-program success further to **0.55** — see `FINDINGS_F
 - A custom DSL → bytecode VM with a per-instruction tracer (free, exact ground truth),
   a lossless state↔tensor codec, and provably-disjoint OOD splits.
 - The slotted grounded-latent world model, the neurosymbolic readout + executor, and an
-  edit-as-action planner. **109 tests.**
+  edit-as-action planner. **111 tests.**
 
 ```
 execwm/
@@ -170,7 +175,7 @@ Splits are disjoint by construction (numeric-gap assertion or structural inverse
 ## Quick start
 
 ```bash
-python -m pytest -q                                  # 109 tests
+python -m pytest -q                                  # 111 tests
 PYTHONPATH=. python scripts/neurosym_spike.py        # the headline result
 PYTHONPATH=. python demo/app.py                      # the interactive demo
 ```
